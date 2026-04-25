@@ -167,15 +167,21 @@ function registerTaskTool(pi: ExtensionAPI) {
 
       onUpdate?.({ content: [{ type: "text", text: `Dispatching ${params.subagent_type} agent: ${params.description}...` }], details: {} });
 
-      // Note: Task tool is an alias for Agent tool from pi-subagents
-      // The LLM should use Agent tool directly if available
-      return {
-        content: [{
-          type: "text",
-          text: `Task tool is an alias for Agent tool. Use Agent tool directly with:\n\nAgent({ subagent_type: "${params.subagent_type}", prompt: "...", description: "${params.description}" })\n\nRequires @tintinweb/pi-subagents extension.`,
-        }],
-        details: { subagent_type: params.subagent_type, description: params.description },
-      };
+      // Task tool is an alias for Agent tool from pi-subagents
+      // Call the Agent tool's execute method directly
+      try {
+        const result = await agentTool.execute(_toolCallId, agentParams, signal, onUpdate, ctx);
+        return result;
+      } catch (error) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error dispatching agent: ${error instanceof Error ? error.message : String(error)}`,
+          }],
+          isError: true,
+          details: { error: error instanceof Error ? error.message : String(error) },
+        };
+      }
     },
   });
 }
@@ -200,22 +206,15 @@ function discoverSkills(cwd: string): Map<string, SkillMeta> {
 
   const skillPaths = [
     join(home, ".pi", "agent", "skills"),
-    join(home, ".pi", "agent", "git"),
+    join(home, ".agents", "skills"),
     join(cwd, ".pi", "skills"),
     join(cwd, ".agents", "skills"),
   ];
 
+  // Recursively find skills directories under ~/.pi/agent/git/
   const gitPackagesDir = join(home, ".pi", "agent", "git");
   if (existsSync(gitPackagesDir)) {
-    try {
-      const packages = readdirSync(gitPackagesDir, { withFileTypes: true });
-      for (const pkg of packages) {
-        if (pkg.isDirectory()) {
-          const skillsDir = join(gitPackagesDir, pkg.name, "skills");
-          if (existsSync(skillsDir)) skillPaths.push(skillsDir);
-        }
-      }
-    } catch {}
+    findSkillsDirs(gitPackagesDir, skillPaths);
   }
 
   for (const basePath of skillPaths) {
@@ -241,12 +240,38 @@ function discoverSkills(cwd: string): Map<string, SkillMeta> {
   return skills;
 }
 
+/** Recursively find all directories named "skills" under a base path */
+function findSkillsDirs(basePath: string, results: string[], depth = 0): void {
+  // Limit recursion depth to avoid infinite loops
+  if (depth > 10) return;
+  
+  try {
+    const entries = readdirSync(basePath, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      
+      const fullPath = join(basePath, entry.name);
+      
+      if (entry.name === "skills") {
+        results.push(fullPath);
+      } else {
+        // Recurse into subdirectories
+        findSkillsDirs(fullPath, results, depth + 1);
+      }
+    }
+  } catch {
+    // Ignore permission errors, etc.
+  }
+}
+
 function parseSkillFrontmatter(content: string, path: string): SkillMeta | null {
   const match = content.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
   if (!match) return null;
 
   const frontmatter = match[1];
-  const meta: SkillMeta = { name: basename(path.replace("/SKILL.md", "")), path };
+  // Use cross-platform path handling - get parent directory name as default skill name
+  const skillDir = path.replace(/[\\/]SKILL\.md$/, '');
+  const meta: SkillMeta = { name: basename(skillDir), path };
 
   for (const line of frontmatter.split("\n")) {
     const colonIdx = line.indexOf(":");
