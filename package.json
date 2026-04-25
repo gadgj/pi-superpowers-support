@@ -1,0 +1,40 @@
+{
+  "name": "@tintinweb/pi-superpowers-support",
+  "version": "0.1.0",
+  "description": "Pi extension providing TodoWrite, Task, and Skill tools for official superpowers compatibility",
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "superpowers"
+  ],
+  "license": "MIT",
+  "author": "gadgj",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gadgj/pi-superpowers-support.git"
+  },
+  "bugs": {
+    "url": "https://github.com/gadgj/pi-superpowers-support/issues"
+  },
+  "homepage": "https://github.com/gadgj/pi-superpowers-support#readme",
+  "type": "module",
+  "main": "./src/index.ts",
+  "files": [
+    "src/",
+    "README.md"
+  ],
+  "pi": {
+    "extensions": [
+      "./src/index.ts"
+    ]
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-ai": "*",
+    "@mariozechner/pi-coding-agent": "*",
+    "@mariozechner/pi-tui": "*",
+    "@sinclair/typebox": "*"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3"
+  }
+}
