@@ -69,13 +69,16 @@ function formatTodos(): string {
     switch (s) {
       case "completed": return "✅";
       case "in_progress": return "🔄";
-      case "pending": return "⬜";
+      case "pending": return "⭕";
     }
   };
 
   const priorityLabel = (p?: "high" | "medium" | "low") => p ? `[${p.toUpperCase()}] ` : "";
 
-  const lines = todos.map((t, i) => `${i + 1}. ${statusIcon(t.status)} ${priorityLabel(t.priority)}${t.content}`);
+  // Pad ID for alignment when there are 10+ items
+  const idWidth = todos.length >= 10 ? 2 : 1;
+
+  const lines = todos.map((t, i) => `${String(i + 1).padStart(idWidth)}. ${statusIcon(t.status)} ${priorityLabel(t.priority)}${t.content}`);
   const completed = todos.filter(t => t.status === "completed").length;
 
   return `Todos (${completed}/${todos.length} completed):\n${lines.join("\n")}`;
