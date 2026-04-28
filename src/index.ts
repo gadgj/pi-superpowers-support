@@ -330,12 +330,18 @@ function registerSkillTool(pi: ExtensionAPI) {
         };
       }
 
+      // Show only first 15 lines of skill content to avoid verbose output
+      const contentLines = skillContent.split("\n");
+      const previewLines = contentLines.slice(0, 15);
+      const hasMore = contentLines.length > 15;
+      const previewContent = previewLines.join("\n") + (hasMore ? `\n\n... (${contentLines.length - 15} more lines)` : "");
+
       return {
         content: [{
           type: "text",
-          text: `Loaded skill: ${skill.name}\n${skill.description ? `\nDescription: ${skill.description}\n` : ""}\n---\n\n${skillContent}`,
+          text: `Loaded skill: ${skill.name}\n${skill.description ? `\nDescription: ${skill.description}\n` : ""}\n---\n\n${previewContent}`,
         }],
-        details: { skillName: skill.name, skillPath: skill.path },
+        details: { skillName: skill.name, skillPath: skill.path, totalLines: contentLines.length },
       };
     },
   });
