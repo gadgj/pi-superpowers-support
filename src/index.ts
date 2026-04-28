@@ -360,6 +360,26 @@ function registerCommands(pi: ExtensionAPI) {
 }
 
 // ============================================================================
+// Auto-inject using-superpowers skill
+// ============================================================================
+
+const USING_SUPERPOWERS_SKILL = `using-superpowers`;
+
+function getUsingSuperpowersContent(cwd: string): string | null {
+  const skills = discoverSkills(cwd);
+  const skill = skills.get(USING_SUPERPOWERS_SKILL);
+  if (!skill) return null;
+
+  try {
+    const content = readFileSync(skill.path, "utf-8");
+    const match = content.match(/^---\n[\s\S]*?\n---\n([\s\S]*)$/);
+    return match ? match[1].trim() : content;
+  } catch {
+    return null;
+  }
+}
+
+// ============================================================================
 // Main Extension
 // ============================================================================
 
@@ -376,5 +396,23 @@ export default function (pi: ExtensionAPI) {
 
   pi.on("resources_discover", async () => {
     skillCache = null;
+  });
+
+  // Auto-inject using-superpowers skill content into system prompt
+  pi.on("before_agent_start", async (event, ctx) => {
+    const skillContent = getUsingSuperpowersContent(ctx.cwd);
+    if (!skillContent) return;
+
+    // Inject the using-superpowers skill content into the system prompt
+    const injectedPrompt = `
+
+<superpowers-skills>
+${skillContent}
+</superpowers-skills>
+`;
+
+    return {
+      systemPrompt: event.systemPrompt + injectedPrompt,
+    };
   });
 }
