@@ -137,51 +137,31 @@ function registerTaskTool(pi: ExtensionAPI) {
       "Task tool requires @tintinweb/pi-subagents extension to be installed.",
     ],
     parameters: TaskSchema,
-    async execute(_toolCallId, params: TaskInput, signal, onUpdate, ctx) {
-      const allTools = pi.getAllTools();
-      const agentTool = allTools.find(t => t.name === "Agent");
+    async execute(_toolCallId, params: TaskInput) {
+      // Check if Agent tool is available (from pi-subagents)
+      const activeTools = pi.getActiveTools();
+      const hasAgentTool = activeTools.includes("Agent");
 
-      if (!agentTool) {
+      if (!hasAgentTool) {
         return {
           content: [{
             type: "text",
             text: "Error: Task tool requires @tintinweb/pi-subagents extension.\n\nInstall with: pi install npm:@tintinweb/pi-subagents\n\nAlternatively, use executing-plans skill for inline execution.",
           }],
           isError: true,
-          details: { error: "pi-subagents not installed" },
+          details: {},
         };
       }
 
-      const agentParams = {
-        subagent_type: params.subagent_type,
-        prompt: params.prompt,
-        description: params.description,
-        model: params.model,
-        thinking: params.thinking,
-        max_turns: params.max_turns,
-        run_in_background: params.run_in_background,
-        resume: params.resume,
-        isolated: params.isolated,
-        inherit_context: params.inherit_context,
+      // Agent tool exists - inform user to use Agent directly
+      // Task is an alias for Agent, and the Agent tool will handle the actual execution
+      return {
+        content: [{
+          type: "text",
+          text: `Task tool is an alias for the Agent tool. Please use the Agent tool directly with the same parameters:\n\nAgent({\n  subagent_type: "${params.subagent_type}",\n  prompt: "${params.prompt}",\n  description: "${params.description}"\n  ...\n})`,
+        }],
+        details: {},
       };
-
-      onUpdate?.({ content: [{ type: "text", text: `Dispatching ${params.subagent_type} agent: ${params.description}...` }], details: {} });
-
-      // Task tool is an alias for Agent tool from pi-subagents
-      // Call the Agent tool's execute method directly
-      try {
-        const result = await agentTool.execute(_toolCallId, agentParams, signal, onUpdate, ctx);
-        return result;
-      } catch (error) {
-        return {
-          content: [{
-            type: "text",
-            text: `Error dispatching agent: ${error instanceof Error ? error.message : String(error)}`,
-          }],
-          isError: true,
-          details: { error: error instanceof Error ? error.message : String(error) },
-        };
-      }
     },
   });
 }
@@ -231,9 +211,13 @@ function discoverSkills(cwd: string): Map<string, SkillMeta> {
           if (meta?.name && !skills.has(meta.name)) {
             skills.set(meta.name, meta);
           }
-        } catch {}
+        } catch (error) {
+          console.error(`[pi-superpowers-support] Failed to parse skill ${skillFile}:`, error);
+        }
       }
-    } catch {}
+    } catch (error) {
+      console.error(`[pi-superpowers-support] Failed to read skills directory ${basePath}:`, error);
+    }
   }
 
   skillCache = skills;
@@ -259,8 +243,11 @@ function findSkillsDirs(basePath: string, results: string[], depth = 0): void {
         findSkillsDirs(fullPath, results, depth + 1);
       }
     }
-  } catch {
-    // Ignore permission errors, etc.
+  } catch (error) {
+    // Ignore permission errors, etc. - these are expected for some directories
+    if (depth === 0) {
+      console.error(`[pi-superpowers-support] Error scanning ${basePath}:`, error);
+    }
   }
 }
 
@@ -284,6 +271,23 @@ function parseSkillFrontmatter(content: string, path: string): SkillMeta | null 
   }
 
   return meta;
+}
+
+/** Extract skill content, stripping frontmatter if present */
+function extractSkillContent(content: string): string {
+  const match = content.match(/^---\n[\s\S]*?\n---\n([\s\S]*)$/);
+  return match ? match[1].trim() : content;
+}
+
+/** Read and parse a skill file, returning content without frontmatter */
+function readSkillContent(skillPath: string): string | null {
+  try {
+    const content = readFileSync(skillPath, "utf-8");
+    return extractSkillContent(content);
+  } catch (error) {
+    console.error(`[pi-superpowers-support] Failed to read skill file ${skillPath}:`, error);
+    return null;
+  }
 }
 
 function registerSkillTool(pi: ExtensionAPI) {
@@ -314,28 +318,25 @@ function registerSkillTool(pi: ExtensionAPI) {
         };
       }
 
-      try {
-        const content = readFileSync(skill.path, "utf-8");
-        const match = content.match(/^---\n[\s\S]*?\n---\n([\s\S]*)$/);
-        const skillContent = match ? match[1].trim() : content;
-
+      const skillContent = readSkillContent(skill.path);
+      if (!skillContent) {
         return {
           content: [{
             type: "text",
-            text: `Loaded skill: ${skill.name}\n${skill.description ? `\nDescription: ${skill.description}\n` : ""}\n---\n\n${skillContent}`,
-          }],
-          details: { skillName: skill.name, skillPath: skill.path },
-        };
-      } catch (error) {
-        return {
-          content: [{
-            type: "text",
-            text: `Error loading skill "${params.skill}": ${error instanceof Error ? error.message : String(error)}`,
+            text: `Error loading skill "${params.skill}": Failed to read skill file`,
           }],
           isError: true,
-          details: { error: error instanceof Error ? error.message : String(error) },
+          details: { error: "Failed to read skill file", skillPath: skill.path },
         };
       }
+
+      return {
+        content: [{
+          type: "text",
+          text: `Loaded skill: ${skill.name}\n${skill.description ? `\nDescription: ${skill.description}\n` : ""}\n---\n\n${skillContent}`,
+        }],
+        details: { skillName: skill.name, skillPath: skill.path },
+      };
     },
   });
 }
@@ -360,28 +361,10 @@ function registerCommands(pi: ExtensionAPI) {
 }
 
 // ============================================================================
-// Auto-inject using-superpowers skill
-// ============================================================================
-
-const USING_SUPERPOWERS_SKILL = `using-superpowers`;
-
-function getUsingSuperpowersContent(cwd: string): string | null {
-  const skills = discoverSkills(cwd);
-  const skill = skills.get(USING_SUPERPOWERS_SKILL);
-  if (!skill) return null;
-
-  try {
-    const content = readFileSync(skill.path, "utf-8");
-    const match = content.match(/^---\n[\s\S]*?\n---\n([\s\S]*)$/);
-    return match ? match[1].trim() : content;
-  } catch {
-    return null;
-  }
-}
-
-// ============================================================================
 // Main Extension
 // ============================================================================
+
+const USING_SUPERPOWERS_SKILL = "using-superpowers";
 
 export default function (pi: ExtensionAPI) {
   registerTodoWriteTool(pi);
@@ -400,8 +383,31 @@ export default function (pi: ExtensionAPI) {
 
   // Auto-inject using-superpowers skill content into system prompt
   pi.on("before_agent_start", async (event, ctx) => {
-    const skillContent = getUsingSuperpowersContent(ctx.cwd);
-    if (!skillContent) return;
+    const skills = discoverSkills(ctx.cwd);
+    const skill = skills.get(USING_SUPERPOWERS_SKILL);
+    
+    if (!skill) {
+      // using-superpowers skill not found - notify user if UI available
+      if (ctx.hasUI) {
+        ctx.ui.notify(
+          "[pi-superpowers-support] using-superpowers skill not found. Install superpowers: pi install https://github.com/obra/superpowers",
+          "warning"
+        );
+      }
+      return;
+    }
+    
+    const skillContent = readSkillContent(skill.path);
+    if (!skillContent) {
+      // Failed to read skill file - notify user if UI available
+      if (ctx.hasUI) {
+        ctx.ui.notify(
+          `[pi-superpowers-support] Failed to read using-superpowers skill from ${skill.path}`,
+          "error"
+        );
+      }
+      return;
+    }
 
     // Inject the using-superpowers skill content into the system prompt
     const injectedPrompt = `
