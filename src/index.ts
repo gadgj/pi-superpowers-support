@@ -333,19 +333,34 @@ function registerSkillTool(pi: ExtensionAPI) {
         };
       }
 
-      // Show only first 15 lines of skill content to avoid verbose output
-      const contentLines = skillContent.split("\n");
-      const previewLines = contentLines.slice(0, 15);
-      const hasMore = contentLines.length > 15;
-      const previewContent = previewLines.join("\n") + (hasMore ? `\n\n... (${contentLines.length - 15} more lines)` : "");
-
+      // Return FULL skill content to LLM (no truncation)
+      // UI display is handled separately by renderResult
       return {
         content: [{
           type: "text",
-          text: `Loaded skill: ${skill.name}\n${skill.description ? `\nDescription: ${skill.description}\n` : ""}\n---\n\n${previewContent}`,
+          text: `Loaded skill: ${skill.name}\n${skill.description ? `\nDescription: ${skill.description}\n` : ""}\n---\n\n${skillContent}`,
         }],
-        details: { skillName: skill.name, skillPath: skill.path, totalLines: contentLines.length },
+        details: { skillName: skill.name, skillPath: skill.path, skillDescription: skill.description, totalLines: skillContent.split("\n").length },
       };
+    },
+    // Custom UI rendering: show collapsed skill info instead of full content
+    renderResult(result, _options, theme, _context) {
+      const { Text, Box } = require("@mariozechner/pi-tui");
+      const details = result.details as { skillName: string; skillPath: string; skillDescription?: string; totalLines: number } | undefined;
+      
+      if (!details) {
+        // Fallback to default rendering if no details
+        return undefined;
+      }
+
+      const label = theme.fg("customMessageLabel", `\x1b[1m[skill]\x1b[22m`);
+      const name = theme.fg("customMessageText", details.skillName);
+      const lines = theme.fg("dim", ` (${details.totalLines} lines)`);
+      const line = `${label} ${name}${lines}`;
+      
+      const box = new Box(1, 1, (t: string) => theme.bg("customMessageBg", t));
+      box.addChild(new Text(line, 0, 0));
+      return box;
     },
   });
 }
