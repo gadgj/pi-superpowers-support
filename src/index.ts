@@ -16,6 +16,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, basename } from "node:path";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { Box, Text } from "@mariozechner/pi-tui";
 import { Type, type Static } from "@sinclair/typebox";
 
 // ============================================================================
@@ -345,12 +346,11 @@ function registerSkillTool(pi: ExtensionAPI) {
     },
     // Custom UI rendering: show collapsed skill info instead of full content
     renderResult(result, _options, theme, _context) {
-      const { Text, Box } = require("@mariozechner/pi-tui");
       const details = result.details as { skillName: string; skillPath: string; skillDescription?: string; totalLines: number } | undefined;
       
       if (!details) {
         // Fallback to default rendering if no details
-        return undefined;
+        return new Text("Skill loaded.", 0, 0);
       }
 
       const label = theme.fg("customMessageLabel", `\x1b[1m[skill]\x1b[22m`);
@@ -358,7 +358,7 @@ function registerSkillTool(pi: ExtensionAPI) {
       const lines = theme.fg("dim", ` (${details.totalLines} lines)`);
       const line = `${label} ${name}${lines}`;
       
-      const box = new Box(1, 1, (t: string) => theme.bg("customMessageBg", t));
+      const box = new Box(1, 0, (t: string) => theme.bg("customMessageBg", t));
       box.addChild(new Text(line, 0, 0));
       return box;
     },

@@ -1,6 +1,6 @@
 {
   "name": "@uadgj/pi-superpowers-support",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Pi extension providing TodoWrite, Task, and Skill tools for official superpowers compatibility",
   "keywords": [
     "pi-package",
