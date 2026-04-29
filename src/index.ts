@@ -345,12 +345,18 @@ function registerSkillTool(pi: ExtensionAPI) {
       };
     },
     // Custom UI rendering: show collapsed skill info instead of full content
-    renderResult(result, _options, theme, _context) {
-      const details = result.details as { skillName: string; skillPath: string; skillDescription?: string; totalLines: number } | undefined;
+    renderResult(result, _options, theme, context) {
+      // If there was an error (e.g. skill not found), display the error message directly
+      if (context.isError) {
+        const errorMsg = result.content[0]?.type === "text" ? result.content[0].text : "Failed to load skill.";
+        return new Text(theme.fg("error", errorMsg), 0, 0);
+      }
+
+      const details = result.details as { skillName?: string; skillPath?: string; totalLines?: number } | undefined;
       
-      if (!details) {
-        // Fallback to default rendering if no details
-        return new Text("Skill loaded.", 0, 0);
+      // If we are missing expected details, show a generic failure/fallback message
+      if (!details || !details.skillName || !details.totalLines) {
+        return new Text(theme.fg("warning", "Skill loaded, but metadata is missing."), 0, 0);
       }
 
       const label = theme.fg("customMessageLabel", `\x1b[1m[skill]\x1b[22m`);
